@@ -49,10 +49,24 @@ const CONFIG = {
     /hangouts\.google\.com/i,
   ],
   
-  // Specific calendar(s) to process - set to calendar ID/email
-  // Leave empty [] to process default calendar only
-  // Examples: ['bret.wortman@elastic.co'] or ['primary'] or ['cal1@gmail.com', 'cal2@gmail.com']
-  calendarIds: ['bret.wortman@elastic.co'],
+  // Calendar to CREATE buffers on (your primary work calendar)
+  targetCalendar: 'bret.wortman@elastic.co',
+  
+  // BLOCKLIST: Skip events from these calendars (company-wide, optional, etc.)
+  // These are calendars whose events you see but don't need buffers for
+  excludeCalendarPatterns: [
+    /all-hands/i,
+    /company.*meeting/i,
+    /town.*hall/i,
+    /@group\.calendar\.google\.com$/,  // Most shared/group calendars
+  ],
+  
+  // Skip events with more than this many guests (likely all-hands/optional)
+  maxGuestsForBuffer: 30,
+  
+  // Only buffer events you've accepted or tentatively accepted
+  // If false, buffers all events regardless of your response
+  requireAcceptedStatus: true,
   
   // Event titles to exclude (exact match or regex)
   excludeTitles: [
@@ -79,123 +93,51 @@ function addBuffersToQualifyingEvents() {
   const now = new Date();
   const lookAhead = new Date(now.getTime() + (CONFIG.lookAheadDays * 24 * 60 * 60 * 1000));
   
+  const calendar = getTargetCalendar();
+  const events = calendar.getEvents(now, lookAhead);
+  
+  console.log(`📅 Processing ${events.length} events from "${calendar.getName()}"`);
+  
   let created = 0;
   let skipped = 0;
   
-  // Get calendars to process
-  const calendars = getCalendarsToProcess();
-  const allowedCalendarIds = CONFIG.calendarIds || [];
-  
-  calendars.forEach(calendar => {
-    const calName = calendar.getName();
-    const calId = calendar.getId();
-    const events = calendar.getEvents(now, lookAhead);
-    console.log(`📅 Processing calendar "${calName}" (${calId}): ${events.length} events`);
-    
-    events.forEach(event => {
-      // Filter: Only process events that ORIGINATED on an allowed calendar
-      // This excludes events where you're just an attendee (like company all-hands)
-      if (allowedCalendarIds.length > 0) {
-        const eventCalId = getEventOriginalCalendar(event);
-        const isFromAllowedCalendar = allowedCalendarIds.some(id => 
-          eventCalId === id || eventCalId.includes(id) || id.includes(eventCalId)
-        );
-        
-        if (!isFromAllowedCalendar) {
-          // Check if user is the organizer as a fallback
-          if (!isOrganizer(event)) {
-            console.log(`  ⏭️ Skipping "${event.getTitle()}" - from different calendar (${eventCalId})`);
-            return;
-          }
-        }
-      }
-      
-      const result = shouldAddBuffers(event);
-      if (result.shouldAdd) {
-        console.log(`  ✓ Qualifies: "${event.getTitle()}" (${result.reason})`);
-        const bufferResult = addBuffersToEvent(calendar, event);
-        created += bufferResult.created;
-        skipped += bufferResult.skipped;
-      }
-    });
+  events.forEach(event => {
+    const result = shouldAddBuffers(event);
+    if (result.shouldAdd) {
+      console.log(`  ✓ Qualifies: "${event.getTitle()}" (${result.reason})`);
+      const bufferResult = addBuffersToEvent(calendar, event);
+      created += bufferResult.created;
+      skipped += bufferResult.skipped;
+    }
   });
   
   console.log(`✅ Complete: ${created} buffers created, ${skipped} skipped`);
 }
 
 /**
- * Get the original calendar ID for an event
+ * Get the target calendar (where we read events and create buffers)
  */
-function getEventOriginalCalendar(event) {
-  try {
-    // Try to get the original calendar ID
-    const origCalId = event.getOriginalCalendarId();
-    if (origCalId) return origCalId;
-  } catch (e) {}
+function getTargetCalendar() {
+  const calId = CONFIG.targetCalendar;
   
-  // Fallback: check creators
+  if (!calId || calId === 'primary') {
+    const cal = CalendarApp.getDefaultCalendar();
+    console.log(`Using default calendar: "${cal.getName()}"`);
+    return cal;
+  }
+  
   try {
-    const creators = event.getCreators();
-    if (creators && creators.length > 0) {
-      return creators[0];
+    const cal = CalendarApp.getCalendarById(calId);
+    if (cal) {
+      console.log(`Using calendar: "${cal.getName()}" (${calId})`);
+      return cal;
     }
-  } catch (e) {}
-  
-  return 'unknown';
-}
-
-/**
- * Check if current user is the organizer of this event
- */
-function isOrganizer(event) {
-  try {
-    const myEmail = Session.getActiveUser().getEmail();
-    const creators = event.getCreators();
-    return creators && creators.some(c => c.toLowerCase() === myEmail.toLowerCase());
   } catch (e) {
-    return false;
-  }
-}
-
-/**
- * Get calendars to process based on CONFIG.calendarIds
- */
-function getCalendarsToProcess() {
-  // If no specific calendars configured, use default
-  if (!CONFIG.calendarIds || CONFIG.calendarIds.length === 0) {
-    const defaultCal = CalendarApp.getDefaultCalendar();
-    console.log(`Processing default calendar: "${defaultCal.getName()}"`);
-    return [defaultCal];
+    console.log(`Error accessing calendar ${calId}: ${e.message}`);
   }
   
-  // Get specific calendars by ID
-  const calendars = [];
-  for (const calId of CONFIG.calendarIds) {
-    try {
-      let cal;
-      if (calId === 'primary') {
-        cal = CalendarApp.getDefaultCalendar();
-      } else {
-        cal = CalendarApp.getCalendarById(calId);
-      }
-      
-      if (cal) {
-        console.log(`✓ Found calendar: "${cal.getName()}" (${calId})`);
-        calendars.push(cal);
-      } else {
-        console.log(`✗ Calendar not found: ${calId}`);
-      }
-    } catch (e) {
-      console.log(`✗ Error accessing calendar ${calId}: ${e.message}`);
-    }
-  }
-  
-  if (calendars.length === 0) {
-    console.log('⚠️ No calendars found, falling back to default');
-    return [CalendarApp.getDefaultCalendar()];
-  }
-  
-  return calendars;
+  console.log('Falling back to default calendar');
+  return CalendarApp.getDefaultCalendar();
 }
 
 /**
@@ -205,40 +147,22 @@ function addBuffersExtended() {
   const now = new Date();
   const lookAhead = new Date(now.getTime() + (CONFIG.lookAheadDaysExtended * 24 * 60 * 60 * 1000));
   
+  const calendar = getTargetCalendar();
+  const events = calendar.getEvents(now, lookAhead);
+  
+  console.log(`📅 Processing ${events.length} events from "${calendar.getName()}" (extended: ${CONFIG.lookAheadDaysExtended} days)`);
+  
   let created = 0;
   let skipped = 0;
   
-  const calendars = getCalendarsToProcess();
-  const allowedCalendarIds = CONFIG.calendarIds || [];
-  
-  calendars.forEach(calendar => {
-    const calName = calendar.getName();
-    const calId = calendar.getId();
-    const events = calendar.getEvents(now, lookAhead);
-    console.log(`📅 Processing calendar "${calName}" (${calId}): ${events.length} events`);
-    
-    events.forEach(event => {
-      // Filter: Only process events that ORIGINATED on an allowed calendar
-      if (allowedCalendarIds.length > 0) {
-        const eventCalId = getEventOriginalCalendar(event);
-        const isFromAllowedCalendar = allowedCalendarIds.some(id => 
-          eventCalId === id || eventCalId.includes(id) || id.includes(eventCalId)
-        );
-        
-        if (!isFromAllowedCalendar && !isOrganizer(event)) {
-          console.log(`  ⏭️ Skipping "${event.getTitle()}" - from different calendar (${eventCalId})`);
-          return;
-        }
-      }
-      
-      const result = shouldAddBuffers(event);
-      if (result.shouldAdd) {
-        console.log(`  ✓ Qualifies: "${event.getTitle()}" (${result.reason})`);
-        const bufferResult = addBuffersToEvent(calendar, event);
-        created += bufferResult.created;
-        skipped += bufferResult.skipped;
-      }
-    });
+  events.forEach(event => {
+    const result = shouldAddBuffers(event);
+    if (result.shouldAdd) {
+      console.log(`  ✓ Qualifies: "${event.getTitle()}" (${result.reason})`);
+      const bufferResult = addBuffersToEvent(calendar, event);
+      created += bufferResult.created;
+      skipped += bufferResult.skipped;
+    }
   });
   
   console.log(`✅ Extended complete: ${created} buffers created, ${skipped} skipped`);
@@ -258,6 +182,8 @@ function shouldAddBuffers(event) {
   const endTime = event.getEndTime();
   const durationMinutes = (endTime - startTime) / (60 * 1000);
   
+  // === BASIC FILTERS ===
+  
   // Skip if too short
   if (durationMinutes < CONFIG.minEventMinutes) {
     return { shouldAdd: false, reason: 'too short' };
@@ -273,20 +199,43 @@ function shouldAddBuffers(event) {
     return { shouldAdd: false, reason: 'is a buffer' };
   }
   
-  // Skip excluded titles
+  // Skip excluded titles (Focus Time, Lunch, etc.)
   for (const pattern of CONFIG.excludeTitles) {
     if (pattern instanceof RegExp && pattern.test(title)) {
-      return { shouldAdd: false, reason: 'excluded title pattern' };
+      return { shouldAdd: false, reason: `excluded title: ${pattern}` };
     }
     if (typeof pattern === 'string' && title === pattern) {
-      return { shouldAdd: false, reason: 'excluded title exact' };
+      return { shouldAdd: false, reason: `excluded title: ${pattern}` };
     }
   }
   
-  // Skip self-created events if configured
-  if (CONFIG.skipSelfCreated && isCreatedBySelf(event)) {
-    return { shouldAdd: false, reason: 'self-created' };
+  // === BLOCKLIST FILTERS (new) ===
+  
+  // Skip events from blocklisted calendars
+  const eventCalId = getEventSourceCalendar(event);
+  for (const pattern of CONFIG.excludeCalendarPatterns || []) {
+    if (pattern instanceof RegExp && pattern.test(eventCalId)) {
+      return { shouldAdd: false, reason: `excluded calendar: ${eventCalId}` };
+    }
   }
+  
+  // Skip events with too many guests (likely all-hands)
+  if (CONFIG.maxGuestsForBuffer) {
+    const guestCount = getGuestCount(event);
+    if (guestCount > CONFIG.maxGuestsForBuffer) {
+      return { shouldAdd: false, reason: `too many guests: ${guestCount}` };
+    }
+  }
+  
+  // Skip events you haven't accepted (if configured)
+  if (CONFIG.requireAcceptedStatus) {
+    const myStatus = getMyAttendanceStatus(event);
+    if (myStatus !== 'YES' && myStatus !== 'MAYBE' && myStatus !== 'OWNER') {
+      return { shouldAdd: false, reason: `not accepted: ${myStatus}` };
+    }
+  }
+  
+  // === POSITIVE MATCHES ===
   
   // Check if it's a customer engagement (title pattern)
   if (isCustomerEngagement(title)) {
@@ -300,6 +249,71 @@ function shouldAddBuffers(event) {
   }
   
   return { shouldAdd: false, reason: 'no conferencing detected' };
+}
+
+/**
+ * Get the source calendar ID for an event (where it was created)
+ */
+function getEventSourceCalendar(event) {
+  try {
+    const origCalId = event.getOriginalCalendarId();
+    if (origCalId) return origCalId;
+  } catch (e) {}
+  
+  try {
+    const creators = event.getCreators();
+    if (creators && creators.length > 0) return creators[0];
+  } catch (e) {}
+  
+  return 'unknown';
+}
+
+/**
+ * Get the number of guests on an event
+ */
+function getGuestCount(event) {
+  try {
+    const guests = event.getGuestList(true); // include self
+    return guests ? guests.length : 0;
+  } catch (e) {
+    return 0;
+  }
+}
+
+/**
+ * Get current user's attendance status for this event
+ * Returns: 'YES', 'NO', 'MAYBE', 'INVITED' (not responded), 'OWNER', or 'UNKNOWN'
+ */
+function getMyAttendanceStatus(event) {
+  try {
+    const myEmail = Session.getActiveUser().getEmail().toLowerCase();
+    
+    // Check if I'm the creator/owner
+    const creators = event.getCreators();
+    if (creators && creators.some(c => c.toLowerCase() === myEmail)) {
+      return 'OWNER';
+    }
+    
+    // Check guest list for my status
+    const guests = event.getGuestList(true);
+    if (guests) {
+      for (const guest of guests) {
+        if (guest.getEmail().toLowerCase() === myEmail) {
+          const status = guest.getGuestStatus();
+          if (status === CalendarApp.GuestStatus.YES) return 'YES';
+          if (status === CalendarApp.GuestStatus.NO) return 'NO';
+          if (status === CalendarApp.GuestStatus.MAYBE) return 'MAYBE';
+          if (status === CalendarApp.GuestStatus.INVITED) return 'INVITED';
+          return status.toString();
+        }
+      }
+    }
+    
+    // If we're seeing this event but not in guest list, we probably own it
+    return 'OWNER';
+  } catch (e) {
+    return 'UNKNOWN';
+  }
 }
 
 /**
@@ -543,7 +557,7 @@ function createBufferIfNeeded(calendar, bufferStart, bufferEnd, bufferTitle, buf
  * Remove orphaned buffer events (where the original meeting was deleted/moved)
  */
 function cleanupOrphanedBuffers() {
-  const calendar = CalendarApp.getDefaultCalendar();
+  const calendar = getTargetCalendar();
   const now = new Date();
   const lookAhead = new Date(now.getTime() + (CONFIG.lookAheadDays * 24 * 60 * 60 * 1000));
   
@@ -648,61 +662,47 @@ function dryRun() {
   
   console.log('🔍 DRY RUN - No events will be created\n');
   console.log(`Looking from ${now.toLocaleString()} to ${lookAhead.toLocaleString()}`);
-  console.log(`Allowed calendars: ${CONFIG.calendarIds.join(', ')}\n`);
+  console.log(`Target calendar: ${CONFIG.targetCalendar}`);
+  console.log(`Max guests: ${CONFIG.maxGuestsForBuffer}`);
+  console.log(`Require accepted: ${CONFIG.requireAcceptedStatus}\n`);
   
-  const calendars = getCalendarsToProcess();
-  const allowedCalendarIds = CONFIG.calendarIds || [];
+  const calendar = getTargetCalendar();
+  const events = calendar.getEvents(now, lookAhead);
   
-  calendars.forEach(calendar => {
-    const calName = calendar.getName();
-    const calId = calendar.getId();
-    const events = calendar.getEvents(now, lookAhead);
-    console.log(`\n📅 Calendar: "${calName}" (${calId})`);
-    console.log(`   ${events.length} events found\n`);
+  console.log(`\n📅 ${events.length} events found\n`);
+  
+  events.forEach(event => {
+    const title = event.getTitle();
+    const start = event.getStartTime();
+    const end = event.getEndTime();
+    const sourceCalendar = getEventSourceCalendar(event);
+    const guestCount = getGuestCount(event);
+    const myStatus = getMyAttendanceStatus(event);
     
-    events.forEach(event => {
-      const title = event.getTitle();
-      const start = event.getStartTime();
-      const end = event.getEndTime();
-      const eventCalId = getEventOriginalCalendar(event);
+    const result = shouldAddBuffers(event);
+    
+    if (result.shouldAdd) {
+      console.log(`✅ WOULD BUFFER: "${title}"`);
+      console.log(`   Time: ${start.toLocaleString()} - ${end.toLocaleString()}`);
+      console.log(`   Source: ${sourceCalendar}`);
+      console.log(`   Guests: ${guestCount} | My status: ${myStatus}`);
+      console.log(`   Reason: ${result.reason}`);
       
-      // Check calendar filter first
-      if (allowedCalendarIds.length > 0) {
-        const isFromAllowedCalendar = allowedCalendarIds.some(id => 
-          eventCalId === id || eventCalId.includes(id) || id.includes(eventCalId)
-        );
-        
-        if (!isFromAllowedCalendar && !isOrganizer(event)) {
-          console.log(`  ⏭️ SKIP (wrong calendar): "${title}"`);
-          console.log(`     Origin: ${eventCalId}`);
-          console.log('');
-          return;
-        }
-      }
-      
-      const result = shouldAddBuffers(event);
-      
-      if (result.shouldAdd) {
-        console.log(`  ✅ WOULD BUFFER: "${title}"`);
-        console.log(`     Time: ${start.toLocaleString()} - ${end.toLocaleString()}`);
-        console.log(`     Origin: ${eventCalId}`);
-        console.log(`     Reason: ${result.reason}`);
-        
-        // Check what buffers would be created
-        const preStart = new Date(start.getTime() - (CONFIG.preBufferMinutes * 60 * 1000));
-        const postEnd = new Date(end.getTime() + (CONFIG.postBufferMinutes * 60 * 1000));
-        console.log(`     Pre-buffer: ${preStart.toLocaleTimeString()} - ${start.toLocaleTimeString()}`);
-        console.log(`     Post-buffer: ${end.toLocaleTimeString()} - ${postEnd.toLocaleTimeString()}`);
-        console.log('');
-      } else {
-        console.log(`  ⏭️ SKIP (${result.reason}): "${title}"`);
-        console.log(`     Origin: ${eventCalId}`);
-        console.log('');
-      }
-    });
+      const preStart = new Date(start.getTime() - (CONFIG.preBufferMinutes * 60 * 1000));
+      const postEnd = new Date(end.getTime() + (CONFIG.postBufferMinutes * 60 * 1000));
+      console.log(`   Pre-buffer: ${preStart.toLocaleTimeString()} - ${start.toLocaleTimeString()}`);
+      console.log(`   Post-buffer: ${end.toLocaleTimeString()} - ${postEnd.toLocaleTimeString()}`);
+    } else {
+      console.log(`⏭️ SKIP: "${title}"`);
+      console.log(`   Time: ${start.toLocaleString()} - ${end.toLocaleString()}`);
+      console.log(`   Source: ${sourceCalendar}`);
+      console.log(`   Guests: ${guestCount} | My status: ${myStatus}`);
+      console.log(`   Reason: ${result.reason}`);
+    }
+    console.log('');
   });
   
-  console.log('\n🔍 DRY RUN COMPLETE');
+  console.log('🔍 DRY RUN COMPLETE');
 }
 
 /**
@@ -712,33 +712,32 @@ function debugEvent(searchTitle) {
   const now = new Date();
   const lookAhead = new Date(now.getTime() + (30 * 24 * 60 * 60 * 1000)); // 30 days
   
-  const calendars = getCalendarsToProcess();
+  const calendar = getTargetCalendar();
+  const events = calendar.getEvents(now, lookAhead);
   
-  calendars.forEach(calendar => {
-    const events = calendar.getEvents(now, lookAhead);
-    
-    events.forEach(event => {
-      const title = event.getTitle();
-      if (title.toLowerCase().includes(searchTitle.toLowerCase())) {
-        console.log(`\n🔍 Found: "${title}"`);
-        console.log(`   Calendar: ${calendar.getName()}`);
-        console.log(`   Time: ${event.getStartTime().toLocaleString()} - ${event.getEndTime().toLocaleString()}`);
-        console.log(`   Location: ${event.getLocation() || '(none)'}`);
-        console.log(`   Description: ${(event.getDescription() || '(none)').substring(0, 200)}...`);
-        
-        try {
-          console.log(`   Hangout Link: ${event.getHangoutLink() || '(none)'}`);
-        } catch (e) {
-          console.log(`   Hangout Link: (error: ${e.message})`);
-        }
-        
-        const confResult = hasConferencingLink(event);
-        console.log(`   Conferencing detected: ${confResult.hasLink ? confResult.type : 'No'}`);
-        
-        const result = shouldAddBuffers(event);
-        console.log(`   Should buffer: ${result.shouldAdd} (${result.reason})`);
+  events.forEach(event => {
+    const title = event.getTitle();
+    if (title.toLowerCase().includes(searchTitle.toLowerCase())) {
+      console.log(`\n🔍 Found: "${title}"`);
+      console.log(`   Calendar: ${calendar.getName()}`);
+      console.log(`   Time: ${event.getStartTime().toLocaleString()} - ${event.getEndTime().toLocaleString()}`);
+      console.log(`   Source: ${getEventSourceCalendar(event)}`);
+      console.log(`   Guests: ${getGuestCount(event)} | My status: ${getMyAttendanceStatus(event)}`);
+      console.log(`   Location: ${event.getLocation() || '(none)'}`);
+      console.log(`   Description: ${(event.getDescription() || '(none)').substring(0, 200)}...`);
+      
+      try {
+        console.log(`   Hangout Link: ${event.getHangoutLink() || '(none)'}`);
+      } catch (e) {
+        console.log(`   Hangout Link: (error: ${e.message})`);
       }
-    });
+      
+      const confResult = hasConferencingLink(event);
+      console.log(`   Conferencing detected: ${confResult.hasLink ? confResult.type : 'No'}`);
+      
+      const result = shouldAddBuffers(event);
+      console.log(`   Should buffer: ${result.shouldAdd} (${result.reason})`);
+    }
   });
 }
 

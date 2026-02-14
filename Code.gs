@@ -50,7 +50,8 @@ const CONFIG = {
   ],
   
   // Calendar to CREATE buffers on (your primary work calendar)
-  targetCalendar: 'bret.wortman@elastic.co',
+  // Use 'primary' for default calendar, or your email like 'you@company.com'
+  targetCalendar: 'primary',
   
   // BLOCKLIST: Skip events from these calendars (company-wide, optional, etc.)
   // These are calendars whose events you see but don't need buffers for

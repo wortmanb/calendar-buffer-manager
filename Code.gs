@@ -500,7 +500,10 @@ function createBufferIfNeeded(calendar, bufferStart, bufferEnd, bufferTitle, buf
   }
   
   // Check for TRUE conflicts (actual overlap, not just touching boundaries)
-  // An event conflicts if: eventStart < bufferEnd AND eventEnd > bufferStart
+  // Only consider events that ACTUALLY block your time:
+  //   - Events you've accepted or own
+  //   - Not from blocklisted calendars
+  //   - Not all-day events
   const conflicts = existingEvents.filter(e => {
     const eventTitle = e.getTitle();
     
@@ -512,6 +515,30 @@ function createBufferIfNeeded(calendar, bufferStart, bufferEnd, bufferTitle, buf
     // Skip all-day events (they shouldn't block buffers)
     if (e.isAllDayEvent()) {
       return false;
+    }
+    
+    // Skip events from blocklisted calendars
+    const eventCalId = getEventSourceCalendar(e);
+    for (const pattern of CONFIG.excludeCalendarPatterns || []) {
+      if (pattern instanceof RegExp && pattern.test(eventCalId)) {
+        return false; // Not a real conflict
+      }
+    }
+    
+    // Skip events you haven't accepted (they don't block your time)
+    if (CONFIG.requireAcceptedStatus) {
+      const myStatus = getMyAttendanceStatus(e);
+      if (myStatus !== 'YES' && myStatus !== 'MAYBE' && myStatus !== 'OWNER') {
+        return false; // Not a real conflict
+      }
+    }
+    
+    // Skip events with too many guests (optional large meetings)
+    if (CONFIG.maxGuestsForBuffer) {
+      const guestCount = getGuestCount(e);
+      if (guestCount > CONFIG.maxGuestsForBuffer) {
+        return false; // Not a real conflict
+      }
     }
     
     const eventStart = e.getStartTime().getTime();

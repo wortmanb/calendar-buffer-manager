@@ -7,55 +7,111 @@ Google Apps Script that automatically adds buffer events before and after meetin
 - **Automatic detection** of meetings that need buffers:
   - Events with conferencing links (Zoom, Google Meet, Teams, WebEx, etc.)
   - Customer engagements (events starting with `[CODE]` pattern)
-- **Smart conflict detection** — won't create buffers that overlap with other meetings
-- **Calendar filtering** — only processes events from specified calendars
+- **Smart filtering** — only buffers meetings you've accepted, skips large all-hands
+- **Conflict-aware** — won't create buffers that overlap with your real meetings
 - **Orphan cleanup** — removes buffer events when the original meeting is deleted
 
-## Setup
+## Quick Start
 
 1. Go to [script.google.com](https://script.google.com)
 2. Create a new project
 3. Copy the contents of `Code.gs` into the editor
-4. Update the `CONFIG` section at the top:
+4. **Set your calendar** at the top of the file:
    ```javascript
-   calendarIds: ['your.email@company.com'],
+   targetCalendar: 'you@company.com',
    ```
-5. Run `setup()` to test and create automatic triggers
+5. Run `dryRun()` to preview what would be created
+6. Run `setup()` to create buffers and enable automatic triggers
 
 ## Configuration
 
-Edit the `CONFIG` object at the top of `Code.gs`:
+The `CONFIG` object at the top of `Code.gs` is organized into sections:
+
+### 👇 Required: Your Calendar
+
+```javascript
+targetCalendar: 'primary',  // Change to 'you@company.com'
+```
+
+### Filter Settings
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `calendarIds` | Array of calendar IDs to process | `[]` (default calendar) |
+| `maxGuestsForBuffer` | Skip events with more guests than this (all-hands) | `30` |
+| `requireAcceptedStatus` | Only buffer events you've accepted | `true` |
+| `excludeCalendarPatterns` | Regex patterns for calendars to ignore | Group calendars |
+
+### Buffer Settings
+
+| Setting | Description | Default |
+|---------|-------------|---------|
 | `preBufferMinutes` | Minutes before meeting | `15` |
 | `postBufferMinutes` | Minutes after meeting | `15` |
 | `minEventMinutes` | Skip events shorter than this | `5` |
 | `lookAheadDays` | How far ahead to look | `7` |
-| `excludeTitles` | Patterns to skip (Focus Time, Lunch, etc.) | See code |
+| `bufferColor` | Calendar color for buffers | Gray |
+| `preBufferEmoji` / `postBufferEmoji` | Emoji prefix for buffer titles | 🚦 |
+
+### Advanced Settings
+
+| Setting | Description |
+|---------|-------------|
+| `customerEngagementPattern` | Regex for title-based detection (e.g., `[ACME]`) |
+| `conferencingPatterns` | Array of regexes for video conference URLs |
+| `excludeTitles` | Title patterns to skip (Focus Time, Lunch, etc.) |
 
 ## Functions
 
 | Function | Description |
 |----------|-------------|
-| `setup()` | Initial setup — runs once and creates triggers |
-| `addBuffersToQualifyingEvents()` | Main function — adds buffers (runs hourly) |
+| `setup()` | Initial setup — runs once and creates hourly triggers |
+| `dryRun()` | **Start here!** Preview what would be created (no changes) |
+| `addBuffersToQualifyingEvents()` | Main function — adds buffers (runs hourly via trigger) |
 | `addBuffersExtended()` | Same but looks 30 days ahead |
-| `cleanupOrphanedBuffers()` | Remove buffers for deleted meetings (runs daily) |
-| `dryRun()` | Preview what would be created (no changes) |
-| `debugEvent("title")` | Debug why a specific event isn't detected |
+| `cleanupOrphanedBuffers()` | Remove buffers for deleted meetings (runs daily via trigger) |
+| `debugEvent("title")` | Debug why a specific event isn't being detected |
+
+## How It Decides What to Buffer
+
+An event gets buffers if **ALL** of these are true:
+
+1. ✅ Has a conferencing link (Zoom, Meet, Teams, etc.) OR matches `[CODE]` pattern
+2. ✅ You've accepted or tentatively accepted (or you're the organizer)
+3. ✅ Fewer than 30 guests (configurable)
+4. ✅ Not from a blocklisted calendar (group calendars, all-hands, etc.)
+5. ✅ Not an excluded title (Focus Time, Lunch, OOO, etc.)
+6. ✅ Duration is at least 5 minutes
+7. ✅ Not an all-day event
 
 ## Supported Conferencing Platforms
 
-- Google Meet (native + URL)
+- Google Meet (native button + URLs)
 - Zoom (including vanity URLs like `company.zoom.us`)
 - Microsoft Teams
 - WebEx
 - GoToMeeting
 - BlueJeans
 - Amazon Chime
-- And more...
+- Google Duo / Hangouts
+- Whereby, Around, Discord
+
+## Troubleshooting
+
+**Buffers not being created for a meeting?**
+
+Run `debugEvent("meeting title")` to see:
+- Guest count and your attendance status
+- Source calendar
+- Whether conferencing was detected
+- The specific reason it was skipped
+
+**Buffers being created for meetings you don't want?**
+
+Add patterns to `excludeCalendarPatterns` or `excludeTitles` in the config.
+
+**Conflicts blocking buffers incorrectly?**
+
+The conflict checker uses the same filters as buffer creation — events you haven't accepted or from blocklisted calendars won't count as conflicts.
 
 ## License
 

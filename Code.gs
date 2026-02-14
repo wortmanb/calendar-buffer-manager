@@ -10,6 +10,34 @@
 // ============================================================
 
 const CONFIG = {
+  // =====================================================
+  // 👇 CHANGE THIS to your calendar email or 'primary'
+  // =====================================================
+  targetCalendar: 'primary',
+  
+  // =====================================================
+  // Filter settings
+  // =====================================================
+  
+  // Skip events with more than this many guests (likely all-hands/optional)
+  maxGuestsForBuffer: 30,
+  
+  // Only buffer events you've accepted or tentatively accepted
+  // If false, buffers all events regardless of your response
+  requireAcceptedStatus: true,
+  
+  // BLOCKLIST: Skip events from these calendars (company-wide, optional, etc.)
+  excludeCalendarPatterns: [
+    /all-hands/i,
+    /company.*meeting/i,
+    /town.*hall/i,
+    /@group\.calendar\.google\.com$/,  // Most shared/group calendars
+  ],
+  
+  // =====================================================
+  // Buffer settings
+  // =====================================================
+  
   // Buffer durations in minutes
   preBufferMinutes: 15,
   postBufferMinutes: 15,
@@ -26,15 +54,18 @@ const CONFIG = {
   preBufferEmoji: '🚦',
   postBufferEmoji: '🚦',
   
+  // =====================================================
+  // Advanced settings (usually don't need to change)
+  // =====================================================
+  
   // Patterns to match customer engagements (title-based)
   customerEngagementPattern: /^\[([A-Z0-9]+)\]/,
   
   // Conferencing URL patterns to detect
-  // Note: patterns match anywhere in text, so "elastic.zoom.us" matches "zoom.us"
   conferencingPatterns: [
     /meet\.google\.com/i,
-    /\.?zoom\.us/i,              // matches zoom.us and *.zoom.us (vanity URLs like elastic.zoom.us)
-    /zoomgov\.com/i,             // government Zoom
+    /\.?zoom\.us/i,              // matches zoom.us and *.zoom.us (vanity URLs)
+    /zoomgov\.com/i,
     /teams\.microsoft\.com/i,
     /teams\.live\.com/i,
     /webex\.com/i,
@@ -48,26 +79,6 @@ const CONFIG = {
     /duo\.google\.com/i,
     /hangouts\.google\.com/i,
   ],
-  
-  // Calendar to CREATE buffers on (your primary work calendar)
-  // Use 'primary' for default calendar, or your email like 'you@company.com'
-  targetCalendar: 'primary',
-  
-  // BLOCKLIST: Skip events from these calendars (company-wide, optional, etc.)
-  // These are calendars whose events you see but don't need buffers for
-  excludeCalendarPatterns: [
-    /all-hands/i,
-    /company.*meeting/i,
-    /town.*hall/i,
-    /@group\.calendar\.google\.com$/,  // Most shared/group calendars
-  ],
-  
-  // Skip events with more than this many guests (likely all-hands/optional)
-  maxGuestsForBuffer: 30,
-  
-  // Only buffer events you've accepted or tentatively accepted
-  // If false, buffers all events regardless of your response
-  requireAcceptedStatus: true,
   
   // Event titles to exclude (exact match or regex)
   excludeTitles: [

@@ -11,9 +11,15 @@
 
 const CONFIG = {
   // =====================================================
-  // 👇 CHANGE THIS to your calendar email or 'primary'
+  // 👇 CHANGE THESE to match your preferences
   // =====================================================
+  
+  // Your calendar email (or 'primary' for default)
   targetCalendar: 'primary',
+  
+  // Buffer durations in minutes
+  preBufferMinutes: 15,
+  postBufferMinutes: 15,
   
   // =====================================================
   // Filter settings
@@ -35,12 +41,8 @@ const CONFIG = {
   ],
   
   // =====================================================
-  // Buffer settings
+  // Other settings
   // =====================================================
-  
-  // Buffer durations in minutes
-  preBufferMinutes: 15,
-  postBufferMinutes: 15,
   
   // Minimum event duration to consider (skip quick syncs)
   minEventMinutes: 5,

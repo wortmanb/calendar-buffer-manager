@@ -27,10 +27,12 @@ Google Apps Script that automatically adds buffer events before and after meetin
 
 The `CONFIG` object at the top of `Code.gs` is organized into sections:
 
-### 👇 Required: Your Calendar
+### 👇 Main Settings (Change These)
 
 ```javascript
 targetCalendar: 'primary',  // Change to 'you@company.com'
+preBufferMinutes: 15,       // Minutes before meeting
+postBufferMinutes: 15,      // Minutes after meeting
 ```
 
 ### Filter Settings
@@ -41,12 +43,10 @@ targetCalendar: 'primary',  // Change to 'you@company.com'
 | `requireAcceptedStatus` | Only buffer events you've accepted | `true` |
 | `excludeCalendarPatterns` | Regex patterns for calendars to ignore | Group calendars |
 
-### Buffer Settings
+### Other Settings
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `preBufferMinutes` | Minutes before meeting | `15` |
-| `postBufferMinutes` | Minutes after meeting | `15` |
 | `minEventMinutes` | Skip events shorter than this | `5` |
 | `lookAheadDays` | How far ahead to look | `7` |
 | `bufferColor` | Calendar color for buffers | Gray |
